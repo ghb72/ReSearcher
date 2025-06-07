@@ -4,7 +4,9 @@ import os
 import re
 import threading
 import time
-from PyPaperBot.__main__ import start as pypaperbot_start
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'PyPaperBot'))
+from __main__ import start as pypaperbot_start
 
 app = Flask(__name__)
 CORS(app)

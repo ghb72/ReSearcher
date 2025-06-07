@@ -1,8 +1,8 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
-from PyPaperBot.Scholar import ScholarPapersInfo
-from PyPaperBot.Crossref import getPapersInfoFromDOIs
+from Scholar import ScholarPapersInfo
+from Crossref import getPapersInfoFromDOIs
 import re
 from .ai_models import AIModelManager
 
