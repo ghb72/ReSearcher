@@ -1,0 +1,22 @@
+name: researcher
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pip
+  - flask
+  - requests
+  - python-dotenv
+  - pip:
+    - flask-cors
+    - PyPDF2
+    - python-docx
+    - transformers
+    - torch
+    - scikit-learn
+    - nltk
+    - openai
+    - google-generativeai
+    - python-dotenv 
+    - PyPaperBot

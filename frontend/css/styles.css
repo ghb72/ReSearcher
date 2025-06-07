@@ -1,0 +1,86 @@
+body {
+    background-color: #f8f9fa;
+}
+
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border: none;
+    margin-bottom: 1rem;
+}
+
+.card-title {
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+#viewer {
+    min-height: 600px;
+}
+
+#textViewer {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+#textContent {
+    white-space: pre-wrap;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.related-paper {
+    padding: 1rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.related-paper:last-child {
+    border-bottom: none;
+}
+
+.related-paper h6 {
+    margin-bottom: 0.5rem;
+    color: #2c3e50;
+}
+
+.related-paper p {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+}
+
+.similarity-score {
+    font-size: 0.8rem;
+    color: #28a745;
+    font-weight: 600;
+}
+
+#summary h6 {
+    color: #2c3e50;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+#summary p {
+    font-size: 0.9rem;
+    color: #495057;
+    line-height: 1.5;
+}
+
+.btn-primary {
+    background-color: #3498db;
+    border-color: #3498db;
+}
+
+.btn-primary:hover {
+    background-color: #2980b9;
+    border-color: #2980b9;
+}
+
+.form-control:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+} 
