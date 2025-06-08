@@ -8,6 +8,7 @@ from .Crossref import getPapersInfoFromDOIs
 import time
 import random
 from .Scholar import ScholarPapersInfo
+from .ScholarExtractor import ScholarExtractor
 
 def extract_doi_from_url(url):
     """Extrae el DOI de una URL o devuelve el DOI directo si se proporcionó uno"""
@@ -114,6 +115,16 @@ def get_paper_info(query):
             if errors:
                 error_msg += ": " + "; ".join(errors)
             return None, error_msg
+        
+        # 3. Intentar obtener abstract y más información desde Google Scholar
+        try:
+            scholar_extractor = ScholarExtractor()
+            for i in range(len(results)):
+                # Intentar enriquecer con abstract y otros datos que puedan faltar
+                results[i] = scholar_extractor.enrich_paper_info(results[i])
+        except Exception as e:
+            errors.append(f"Error al enriquecer información: {str(e)}")
+            # No fallamos aquí, continuamos con la información que tengamos
         
         # Preparar la respuesta con los resultados de ambas fuentes
         print(results)
@@ -360,6 +371,7 @@ def search_and_download_paper(query, output_dir):
             "authors": first_source.get("authors", ["Autores desconocidos"]),
             "year": first_source.get("year"),
             "jurnal": first_source.get("jurnal"),
+            "abstract": first_source.get("abstract", ""),
             "pdf_url": f"/pdf/{pdf_filename}"
         }
         
