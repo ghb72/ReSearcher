@@ -1,23 +1,20 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
-from Scholar import ScholarPapersInfo
-from Crossref import getPapersInfoFromDOIs
 import re
-from .ai_models import AIModelManager
+import requests
+from .Crossref import getPapersInfoFromDOIs
 
-# Inicializar el gestor de modelos de IA
-ai_manager = AIModelManager()
-
+# Función para buscar artículos relacionados
 def find_related_papers(paper_id, context='', model='tfidf'):
     """
     Encuentra artículos relacionados basados en el contenido y contexto
     """
     try:
-        # Obtener el artículo original usando getPapersInfoFromDOIs
+        # Obtener el artículo original
         original_paper = getPapersInfoFromDOIs(paper_id, restrict=1)
         
-        if not original_paper:
+        if not original_paper or not original_paper.DOI:
             return {
                 'success': False,
                 'error': 'No se encontró el artículo original',
@@ -25,29 +22,28 @@ def find_related_papers(paper_id, context='', model='tfidf'):
             }
         
         # Preparar el texto para análisis
-        text_to_analyze = f"{original_paper.abstract} {context}"
+        title = original_paper.title if hasattr(original_paper, 'title') and original_paper.title else ""
+        abstract = getattr(original_paper, 'abstract', '')
+        text_to_analyze = f"{title} {abstract} {context}".strip()
         
-        # Obtener palabras clave según el modelo
-        if model == 'tfidf':
-            keywords = extract_keywords(text_to_analyze)
-        else:  # openai o gemini
-            ai_result = ai_manager.find_related_papers_ai(text_to_analyze, context, model)
-            if not ai_result['success']:
-                return {
-                    'success': False,
-                    'error': f"Error al obtener palabras clave con {model}: {ai_result['error']}",
-                    'model': model
-                }
-            keywords = ai_result['keywords']
+        if not text_to_analyze:
+            return {
+                'success': False,
+                'error': 'No hay suficiente texto para analizar',
+                'model': model
+            }
         
-        # Buscar artículos relacionados usando ScholarPapersInfo
-        related_papers = ScholarPapersInfo(
-            query=' '.join(keywords),
-            scholar_pages=2,  # Buscar en las primeras 2 páginas
-            restrict=1,  # Descargar solo PDFs
-            min_date=None,  # Sin filtro de fecha mínima
-            scholar_results=10  # 10 resultados por página
-        )
+        # Obtener palabras clave
+        keywords = extract_keywords(text_to_analyze)
+        if not keywords:
+            return {
+                'success': False,
+                'error': 'No se pudieron extraer palabras clave',
+                'model': model
+            }
+        
+        # Buscar artículos relacionados en Crossref
+        related_papers = search_crossref_papers(' '.join(keywords))
         
         if not related_papers:
             return {
@@ -56,42 +52,52 @@ def find_related_papers(paper_id, context='', model='tfidf'):
                 'model': model
             }
         
-        # Calcular similitud
-        vectorizer = TfidfVectorizer(stop_words='english')
-        texts = [text_to_analyze] + [paper.abstract for paper in related_papers if paper.abstract]
-        if len(texts) < 2:
+        # Verificar que hay suficientes datos
+        if len(related_papers) < 1:
             return {
                 'success': False,
-                'error': 'No hay suficientes textos para calcular similitud',
+                'error': 'No hay suficientes artículos para comparar',
                 'model': model
             }
-            
-        tfidf_matrix = vectorizer.fit_transform(texts)
         
-        # Calcular similitud de coseno
-        cosine_similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:])
-        
-        # Ordenar resultados por similitud
-        similar_indices = cosine_similarities[0].argsort()[::-1]
-        
-        # Formatear resultados
+        # Calcular similitud sin usar matrices TF-IDF para evitar errores
+        # Usar las palabras clave directamente para puntuar
         results = []
-        for idx in similar_indices[:10]:  # Top 10 resultados
-            paper = related_papers[idx]
+        for paper in related_papers:
+            # Crear texto completo del paper
+            paper_text = f"{paper.get('title', '')} {paper.get('abstract', '')}"
+            
+            # Calcular cuántas keywords están en el texto del paper (puntuación simple)
+            score = 0
+            for keyword in keywords:
+                if keyword.lower() in paper_text.lower():
+                    score += 1
+            
+            # Normalizar puntuación
+            similarity = score / len(keywords) if keywords else 0
+            
+            # Evitar incluir el mismo paper
+            if paper.get('doi') == paper_id:
+                continue
+                
             results.append({
-                'title': paper.title,
-                'authors': paper.authors,
-                'abstract': paper.abstract,
-                'doi': paper.doi,
-                'url': paper.url,
-                'year': paper.year if hasattr(paper, 'year') else None,
-                'cites_num': paper.cites_num if hasattr(paper, 'cites_num') else None,
-                'similarity_score': float(cosine_similarities[0][idx])
+                'title': paper.get('title', 'Sin título'),
+                'authors': paper.get('authors', ['Autores desconocidos']),
+                'abstract': paper.get('abstract', ''),
+                'doi': paper.get('doi', ''),
+                'url': paper.get('url', ''),
+                'year': paper.get('year', None),
+                'cites_num': paper.get('citation_count', None),
+                'similarity_score': float(similarity)
             })
         
+        # Ordenar por puntuación de similitud
+        results.sort(key=lambda x: x['similarity_score'], reverse=True)
+        
+        # Devolver solo los 10 primeros resultados
         return {
             'success': True,
-            'results': results,
+            'results': results[:10],
             'model': model
         }
     
@@ -104,21 +110,108 @@ def find_related_papers(paper_id, context='', model='tfidf'):
 
 def extract_keywords(text, max_keywords=10):
     """
-    Extrae palabras clave del texto usando TF-IDF
+    Extrae palabras clave del texto de manera simplificada
     """
     # Eliminar caracteres especiales y convertir a minúsculas
     text = re.sub(r'[^\w\s]', '', text.lower())
     
-    # Crear vectorizador TF-IDF
-    vectorizer = TfidfVectorizer(max_features=max_keywords, stop_words='english')
-    tfidf_matrix = vectorizer.fit_transform([text])
+    # Dividir en palabras
+    words = text.split()
     
-    # Obtener las palabras clave
-    feature_names = vectorizer.get_feature_names_out()
-    scores = tfidf_matrix.toarray()[0]
+    # Eliminar palabras comunes (stop words)
+    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'about', 'as', 'into', 'like', 'through', 'after', 'over', 'between', 'out', 'against', 'during', 'without', 'before', 'under', 'around', 'among'}
+    filtered_words = [word for word in words if word not in stop_words and len(word) > 2]
     
-    # Ordenar por score
-    keyword_scores = list(zip(feature_names, scores))
-    keyword_scores.sort(key=lambda x: x[1], reverse=True)
+    # Contar frecuencia de palabras
+    word_freq = {}
+    for word in filtered_words:
+        if word in word_freq:
+            word_freq[word] += 1
+        else:
+            word_freq[word] = 1
     
-    return [keyword for keyword, score in keyword_scores] 
+    # Ordenar por frecuencia
+    sorted_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)
+    
+    # Devolver las palabras más frecuentes
+    return [word for word, freq in sorted_words[:max_keywords]]
+
+def search_crossref_papers(query, max_results=30):
+    """
+    Busca artículos científicos en Crossref
+    """
+    headers = {
+        'User-Agent': 'ResearchAssistant/1.0 (mailto:example@example.com)'
+    }
+    
+    try:
+        url = "https://api.crossref.org/works"
+        params = {
+            'query': query,
+            'rows': max_results,
+            'sort': 'relevance',
+            'select': 'DOI,title,abstract,author,published-print,published-online,container-title,reference,is-referenced-by-count'
+        }
+        
+        response = requests.get(url, params=params, headers=headers, timeout=15)
+        
+        if response.status_code != 200:
+            return []
+            
+        data = response.json()
+        
+        if 'message' not in data or 'items' not in data['message']:
+            return []
+            
+        results = []
+        for item in data['message']['items']:
+            # Extraer título
+            title = item.get('title', [''])[0] if item.get('title') and len(item['title']) > 0 else 'Sin título'
+            
+            # Extraer autores
+            authors = []
+            if 'author' in item:
+                for author in item['author']:
+                    name_parts = []
+                    if 'given' in author:
+                        name_parts.append(author['given'])
+                    if 'family' in author:
+                        name_parts.append(author['family'])
+                    if name_parts:
+                        authors.append(' '.join(name_parts))
+            
+            # Extraer año de publicación
+            year = None
+            if 'published-print' in item and 'date-parts' in item['published-print']:
+                year = item['published-print']['date-parts'][0][0]
+            elif 'published-online' in item and 'date-parts' in item['published-online']:
+                year = item['published-online']['date-parts'][0][0]
+            
+            # Extraer resumen
+            abstract = item.get('abstract', '')
+            
+            # Extraer DOI
+            doi = item.get('DOI', '')
+            
+            # Extraer revista
+            journal = item.get('container-title', [''])[0] if item.get('container-title') and len(item['container-title']) > 0 else ''
+            
+            # Extraer número de citas
+            citation_count = item.get('is-referenced-by-count', 0)
+            
+            results.append({
+                'title': title,
+                'authors': authors,
+                'year': year,
+                'abstract': abstract,
+                'doi': doi,
+                'journal': journal,
+                'citation_count': citation_count,
+                'url': f"https://doi.org/{doi}" if doi else None
+            })
+            
+        return results
+    
+    except Exception as e:
+        print(f"Error buscando en Crossref: {str(e)}")
+        return [] 

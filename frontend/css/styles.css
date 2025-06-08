@@ -1,11 +1,95 @@
+/* Estilos generales */
 body {
     background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+.container {
+    max-width: 1200px;
+}
+
+/* Estilos de tarjetas */
 .card {
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    border: none;
-    margin-bottom: 1rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+/* Botones */
+.btn {
+    border-radius: 5px;
+    font-weight: 500;
+}
+
+.btn-primary {
+    background-color: #0d6efd;
+}
+
+.btn-primary:hover {
+    background-color: #0b5ed7;
+}
+
+.btn-info {
+    background-color: #0dcaf0;
+}
+
+.btn-info:hover {
+    background-color: #0bb7db;
+}
+
+/* PDF Visor */
+#pdfFrame {
+    border-radius: 0;
+    background-color: #f1f1f1;
+}
+
+/* Resultados */
+#results .card-body {
+    padding: 1.25rem;
+}
+
+#results .card-title {
+    margin-bottom: 0.5rem;
+    color: #0d6efd;
+}
+
+#results .badge {
+    margin-right: 0.5rem;
+}
+
+/* Artículos relacionados */
+#relatedResults .card-body {
+    padding: 1.25rem;
+}
+
+/* Footer */
+footer {
+    margin-top: 2rem;
+    padding: 1rem 0;
+    background-color: #f8f9fa;
+    border-top: 1px solid #e9ecef;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .container {
+        padding-left: 15px;
+        padding-right: 15px;
+    }
+    
+    #pdfFrame {
+        height: 400px;
+    }
 }
 
 .card-title {
@@ -68,16 +152,6 @@ body {
     font-size: 0.9rem;
     color: #495057;
     line-height: 1.5;
-}
-
-.btn-primary {
-    background-color: #3498db;
-    border-color: #3498db;
-}
-
-.btn-primary:hover {
-    background-color: #2980b9;
-    border-color: #2980b9;
 }
 
 .form-control:focus {
