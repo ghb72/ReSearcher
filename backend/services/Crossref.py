@@ -26,7 +26,7 @@ def getPapersInfoFromDOIs(DOI, restrict):
 
     try:
         paper = get_entity(DOI, EntityType.PUBLICATION, OutputType.JSON)
-        if paper is not None and len(paper) > 0:
+        if isinstance(paper, dict) and paper is not None and len(paper) > 0:
             if "title" in paper:
                 paper_found.title = paper["title"][0]
             if "short-container-title" in paper and len(paper["short-container-title"]) > 0:

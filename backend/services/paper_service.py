@@ -58,7 +58,7 @@ def format_paper_info(paper_info, doi, source):
         "authors": authors,
         "year": paper_info.year if hasattr(paper_info, 'year') else None,
         "jurnal": paper_info.jurnal if hasattr(paper_info, 'jurnal') else None,
-        "abstract": getattr(paper_info, 'abstract', ''),
+        "abstract": paper_info.abstract if hasattr(paper_info, 'abstract') else None,
         "url": getattr(paper_info, 'url', f"https://doi.org/{doi}"),
         "cites_num": getattr(paper_info, 'cites_num', None),
         "bibtex": getattr(paper_info, 'bibtex', ''),
@@ -94,29 +94,30 @@ def get_paper_info(query):
         except Exception as e:
             errors.append(f"Error en Crossref: {str(e)}")
         
-        # 2. Obtener información de Google Scholar // No hay soporte de busqueda por DOI en Google Scholar
-        # try:
-        #     # Buscar en Google Scholar usando el DOI
-        #     scholar_papers = ScholarPapersInfo(
-        #         query=f'"{doi}"', 
-        #         scholar_pages=range(1, 2),  # Solo la primera página
-        #         restrict=None, 
-        #         scholar_results=1  # Solo el primer resultado
-        #     )
-            
-        #     if scholar_papers and len(scholar_papers) > 0:
-        #         scholar_info = scholar_papers[0]
-        #         if hasattr(scholar_info, 'DOI') and scholar_info.DOI:
-        #             results.append(format_paper_info(scholar_info, doi, "Google Scholar"))
-        # except Exception as e:
-        #     errors.append(f"Error en Google Scholar: {str(e)}")
+        # 2. Obtener información de Google Scholar
+        if not results:
+            try:
+                # Buscar en Google Scholar usando el DOI
+                scholar_papers = ScholarPapersInfo(
+                    query=f'"{doi}"', 
+                    scholar_pages=range(1, 2),  # Solo la primera página
+                    restrict=None, 
+                    scholar_results=1  # Solo el primer resultado
+                )
+                
+                if scholar_papers and len(scholar_papers) > 0:
+                    scholar_info = scholar_papers[0]
+                    if hasattr(scholar_info, 'DOI') and scholar_info.DOI:
+                        results.append(format_paper_info(scholar_info, doi, "Google Scholar"))
+            except Exception as e:
+                errors.append(f"Error en Google Scholar: {str(e)}")
         
-        # # Si no se encontró información en ninguna fuente
-        # if not results:
-        #     error_msg = "No se encontró información para el DOI proporcionado"
-        #     if errors:
-        #         error_msg += ": " + "; ".join(errors)
-        #     return None, error_msg
+        # Si no se encontró información en ninguna fuente
+        if not results:
+            error_msg = "No se encontró información para el DOI proporcionado"
+            if errors:
+                error_msg += ": " + "; ".join(errors)
+            return None, error_msg
         
         # 3. Intentar obtener abstract y más información desde Google Scholar
         try:

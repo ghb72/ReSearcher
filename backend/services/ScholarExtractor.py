@@ -103,7 +103,7 @@ class ScholarExtractor:
                         paper_info['journal'] = journal_parts[1].strip()
             
             # Abstract / Resumen
-            abstract_tag = result.select_one('.gs_rs')
+            abstract_tag = result.select_one('.gsh_csp')
             if abstract_tag:
                 abstract_text = abstract_tag.get_text(strip=True)
                 # Eliminar indicadores de elipsis y limpiar

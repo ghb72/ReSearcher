@@ -2,6 +2,12 @@
 # Python
 # -----------------
 
+## Codigo temporal de python
+# Ignora archivos temporales de Python que no son necesarios para el control de versiones.
+*.py[cod]
+*tempCodeRunner.py
+*tempCodeRunnerFile.py
+
 # Byte-compiled / Cache
 # Ignora las carpetas de caché que Python crea automáticamente.
 __pycache__/

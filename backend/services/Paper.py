@@ -13,13 +13,15 @@ import urllib.parse
 class Paper:
 
 
-    def __init__(self,title=None, scholar_link=None, scholar_page=None, cites=None, link_pdf=None, year=None, authors=None):        
+    def __init__(self,title=None, scholar_link=None, scholar_page=None, link_pdf=None, year=None, authors=None):        
         self.title = title
         self.scholar_page = scholar_page
         self.scholar_link = scholar_link
         self.pdf_link = link_pdf
         self.year = year
         self.authors = authors
+
+        self.abstract = None
 
         self.jurnal = None
         self.cites_num = None
