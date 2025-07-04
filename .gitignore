@@ -17,6 +17,7 @@ venv/
 .venv/
 env/
 .env/
+.env
 pip-cache/
 
 # Archivos de dependencias de Poetry
