@@ -13,23 +13,55 @@
         <div class="row mb-4">
             <div class="col-12">
                 <h2 class="text-center"><i class="fas fa-book-open me-2"></i>ReSearcher: Asistente de Búsqueda de Artículos Científicos</h2>
-                <p class="text-center text-muted">Busca y descarga artículos científicos utilizando DOI o enlaces completos</p>
+                <p class="text-center text-muted">Busca y descarga artículos científicos utilizando DOI, enlaces completos o palabras clave</p>
             </div>
         </div>
 
         <div class="row">
             <div class="col-md-12">
-                <div class="card mb-4">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0"><i class="fas fa-search me-2"></i>Buscar Artículo</h5>
-                    </div>
-                    <div class="card-body">
-                        <form id="searchForm">
-                            <div class="input-group mb-3">
-                                <input type="text" class="form-control" id="searchInput" placeholder="Introduce un DOI o enlace completo (ej: 10.1021/jacs.4c12550)">
-                                <button type="submit" class="btn btn-primary"><i class="fas fa-search me-1"></i>Buscar</button>
+                <ul class="nav nav-tabs" id="searchTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="doi-tab" data-bs-toggle="tab" data-bs-target="#doi-search" type="button" role="tab" aria-controls="doi-search" aria-selected="true">
+                            <i class="fas fa-fingerprint me-1"></i>Buscar por DOI
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="keywords-tab" data-bs-toggle="tab" data-bs-target="#keywords-search" type="button" role="tab" aria-controls="keywords-search" aria-selected="false">
+                            <i class="fas fa-search me-1"></i>Buscar por Palabras Clave
+                        </button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content" id="searchTabsContent">
+                    <!-- Búsqueda por DOI -->
+                    <div class="tab-pane fade show active" id="doi-search" role="tabpanel" aria-labelledby="doi-tab">
+                        <div class="card mb-4 border-top-0 rounded-top-0">
+                            <div class="card-body">
+                                <form id="searchForm">
+                                    <div class="input-group mb-3">
+                                        <input type="text" class="form-control" id="searchInput" placeholder="Introduce un DOI o enlace completo (ej: 10.1021/jacs.4c12550)">
+                                        <button type="submit" class="btn btn-primary"><i class="fas fa-search me-1"></i>Buscar</button>
+                                    </div>
+                                </form>
                             </div>
-                        </form>
+                        </div>
+                    </div>
+                    
+                    <!-- Búsqueda por palabras clave -->
+                    <div class="tab-pane fade" id="keywords-search" role="tabpanel" aria-labelledby="keywords-tab">
+                        <div class="card mb-4 border-top-0 rounded-top-0">
+                            <div class="card-body">
+                                <form id="keywordsSearchForm">
+                                    <div class="input-group mb-3">
+                                        <input type="text" class="form-control" id="keywordsInput" placeholder="Introduce título o palabras clave (ej: machine learning neural networks)">
+                                        <button type="submit" class="btn btn-primary"><i class="fas fa-search me-1"></i>Buscar</button>
+                                    </div>
+                                    <div class="form-text">
+                                        <i class="fas fa-info-circle me-1"></i>Esta búsqueda consulta simultáneamente Google Scholar y Crossref para encontrar los mejores resultados.
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

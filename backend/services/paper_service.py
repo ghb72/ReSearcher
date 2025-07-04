@@ -9,6 +9,8 @@ import time
 import random
 from .Scholar import ScholarPapersInfo
 from .ScholarExtractor import ScholarExtractor
+import concurrent.futures
+import threading
 
 def extract_doi_from_url(url):
     """Extrae el DOI de una URL o devuelve el DOI directo si se proporcionó uno"""
@@ -92,29 +94,29 @@ def get_paper_info(query):
         except Exception as e:
             errors.append(f"Error en Crossref: {str(e)}")
         
-        # 2. Obtener información de Google Scholar
-        try:
-            # Buscar en Google Scholar usando el DOI
-            scholar_papers = ScholarPapersInfo(
-                query=f'"{doi}"', 
-                scholar_pages=range(1, 2),  # Solo la primera página
-                restrict=None, 
-                scholar_results=1  # Solo el primer resultado
-            )
+        # 2. Obtener información de Google Scholar // No hay soporte de busqueda por DOI en Google Scholar
+        # try:
+        #     # Buscar en Google Scholar usando el DOI
+        #     scholar_papers = ScholarPapersInfo(
+        #         query=f'"{doi}"', 
+        #         scholar_pages=range(1, 2),  # Solo la primera página
+        #         restrict=None, 
+        #         scholar_results=1  # Solo el primer resultado
+        #     )
             
-            if scholar_papers and len(scholar_papers) > 0:
-                scholar_info = scholar_papers[0]
-                if hasattr(scholar_info, 'DOI') and scholar_info.DOI:
-                    results.append(format_paper_info(scholar_info, doi, "Google Scholar"))
-        except Exception as e:
-            errors.append(f"Error en Google Scholar: {str(e)}")
+        #     if scholar_papers and len(scholar_papers) > 0:
+        #         scholar_info = scholar_papers[0]
+        #         if hasattr(scholar_info, 'DOI') and scholar_info.DOI:
+        #             results.append(format_paper_info(scholar_info, doi, "Google Scholar"))
+        # except Exception as e:
+        #     errors.append(f"Error en Google Scholar: {str(e)}")
         
-        # Si no se encontró información en ninguna fuente
-        if not results:
-            error_msg = "No se encontró información para el DOI proporcionado"
-            if errors:
-                error_msg += ": " + "; ".join(errors)
-            return None, error_msg
+        # # Si no se encontró información en ninguna fuente
+        # if not results:
+        #     error_msg = "No se encontró información para el DOI proporcionado"
+        #     if errors:
+        #         error_msg += ": " + "; ".join(errors)
+        #     return None, error_msg
         
         # 3. Intentar obtener abstract y más información desde Google Scholar
         try:
@@ -395,4 +397,193 @@ def search_and_download_paper(query, output_dir):
     
     finally:
         # Eliminar el directorio temporal
-        shutil.rmtree(temp_dir, ignore_errors=True) 
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+def search_papers_by_keywords(query, max_results=10):
+    """
+    Busca papers por título o palabras clave utilizando solicitudes paralelas a Scholar y Crossref
+    
+    Args:
+        query: Texto de búsqueda (título o palabras clave)
+        max_results: Número máximo de resultados a devolver
+    
+    Returns:
+        tuple: (resultados_lista, error_mensaje)
+    """
+    if not query or len(query.strip()) < 3:
+        return None, "La consulta de búsqueda debe tener al menos 3 caracteres"
+    
+    # Resultados combinados de ambas fuentes
+    combined_results = []
+    errors = []
+    
+    # Semáforo para proteger el acceso a los resultados combinados
+    results_lock = threading.Lock()
+    
+    def search_scholar():
+        """Función para buscar en Google Scholar en paralelo"""
+        try:
+            # Buscar en Google Scholar
+            scholar_papers = ScholarPapersInfo(
+                query=query, 
+                scholar_pages=range(1, 2),  # Solo primera página
+                restrict=None, 
+                scholar_results=max_results
+            )
+            
+            if scholar_papers:
+                # Enriquecer con información adicional
+                scholar_extractor = ScholarExtractor()
+                enriched_papers = []
+                
+                for paper in scholar_papers:
+                    if hasattr(paper, 'title') and paper.title:
+                        # Formatear la información del paper
+                        paper_info = {
+                            "title": paper.title,
+                            "authors": getattr(paper, 'authors', []),
+                            "year": getattr(paper, 'year', None),
+                            "abstract": getattr(paper, 'abstract', ''),
+                            "doi": getattr(paper, 'DOI', None),
+                            "url": getattr(paper, 'url', None),
+                            "cites_num": getattr(paper, 'cites_num', None),
+                            "source": "Google Scholar"
+                        }
+                        
+                        # Enriquecer con información adicional
+                        paper_info = scholar_extractor.enrich_paper_info(paper_info)
+                        enriched_papers.append(paper_info)
+                
+                # Agregar a los resultados combinados
+                with results_lock:
+                    combined_results.extend(enriched_papers)
+        
+        except Exception as e:
+            errors.append(f"Error en Google Scholar: {str(e)}")
+    
+    def search_crossref():
+        """Función para buscar en Crossref en paralelo"""
+        try:
+            # Preparar la consulta para Crossref
+            from crossref_commons.iteration import iterate_publications_as_json
+            
+            # Parámetros de búsqueda para Crossref
+            queries = {
+                'query.bibliographic': query,
+                'sort': 'relevance',
+                'rows': max_results,
+                'select': 'DOI,title,deposited,author,short-container-title,abstract'
+            }
+            
+            crossref_results = []
+            
+            # Iterar sobre los resultados de Crossref
+            for paper in iterate_publications_as_json(max_results=max_results, queries=queries):
+                try:
+                    # Extraer información del paper
+                    paper_info = {
+                        "title": paper.get("title", ["Sin título"])[0] if "title" in paper and paper["title"] else "Sin título",
+                        "doi": paper.get("DOI"),
+                        "source": "Crossref"
+                    }
+                    
+                    # Extraer autores
+                    if "author" in paper and paper["author"]:
+                        authors = []
+                        for author in paper["author"]:
+                            if "given" in author and "family" in author:
+                                authors.append(f"{author['family']}, {author['given']}")
+                            elif "family" in author:
+                                authors.append(author["family"])
+                        paper_info["authors"] = authors
+                    
+                    # Extraer año de publicación
+                    if "published-print" in paper and "date-parts" in paper["published-print"]:
+                        paper_info["year"] = paper["published-print"]["date-parts"][0][0]
+                    elif "published-online" in paper and "date-parts" in paper["published-online"]:
+                        paper_info["year"] = paper["published-online"]["date-parts"][0][0]
+                    
+                    # Extraer revista
+                    if "short-container-title" in paper and paper["short-container-title"]:
+                        paper_info["jurnal"] = paper["short-container-title"][0]
+                    
+                    # Extraer abstract
+                    if "abstract" in paper and paper["abstract"]:
+                        paper_info["abstract"] = paper["abstract"]
+                    
+                    # Añadir URL
+                    if "DOI" in paper:
+                        paper_info["url"] = f"https://doi.org/{paper['DOI']}"
+                    
+                    # Añadir bibtex
+                    if "DOI" in paper:
+                        try:
+                            from .Crossref import getBibtex
+                            paper_info["bibtex"] = getBibtex(paper["DOI"])
+                        except:
+                            pass
+                    
+                    crossref_results.append(paper_info)
+                    
+                except Exception as e:
+                    print(f"Error procesando resultado de Crossref: {str(e)}")
+            
+            # Agregar a los resultados combinados
+            with results_lock:
+                combined_results.extend(crossref_results)
+                
+        except Exception as e:
+            errors.append(f"Error en Crossref: {str(e)}")
+    
+    # Ejecutar búsquedas en paralelo
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        scholar_future = executor.submit(search_scholar)
+        crossref_future = executor.submit(search_crossref)
+        
+        # Esperar a que ambas búsquedas terminen
+        concurrent.futures.wait([scholar_future, crossref_future])
+    
+    # Si no se encontraron resultados
+    if not combined_results:
+        error_msg = "No se encontraron papers que coincidan con la búsqueda"
+        if errors:
+            error_msg += ": " + "; ".join(errors)
+        return None, error_msg
+    
+    # Eliminar duplicados basados en DOI o título similar
+    unique_results = []
+    seen_dois = set()
+    seen_titles = set()
+    
+    for paper in combined_results:
+        # Normalizar título para comparación
+        title_normalized = paper.get("title", "").lower().strip()
+        doi = paper.get("doi")
+        
+        # Verificar si es un duplicado
+        is_duplicate = False
+        if doi and doi in seen_dois:
+            is_duplicate = True
+        elif title_normalized and any(title_normalized == t for t in seen_titles):
+            is_duplicate = True
+        
+        # Si no es duplicado, añadirlo a los resultados
+        if not is_duplicate:
+            if doi:
+                seen_dois.add(doi)
+            if title_normalized:
+                seen_titles.add(title_normalized)
+            unique_results.append(paper)
+    
+    # Ordenar por relevancia (actualmente simplificado)
+    # En una implementación más avanzada, se podría usar un algoritmo de ranking más sofisticado
+    sorted_results = sorted(unique_results, 
+                           key=lambda x: (x.get("cites_num", 0) or 0) * 10 + 
+                                        (1 if x.get("abstract") else 0) * 5 +
+                                        (1 if x.get("doi") else 0) * 3,
+                           reverse=True)
+    
+    # Limitar el número de resultados
+    final_results = sorted_results[:max_results]
+    
+    return final_results, None 

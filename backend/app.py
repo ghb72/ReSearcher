@@ -9,7 +9,7 @@ import sys
 backend_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, backend_dir)
 
-from services.paper_service import get_paper_info, search_and_download_paper
+from services.paper_service import get_paper_info, search_and_download_paper, search_papers_by_keywords
 
 app = Flask(__name__)
 CORS(app)
@@ -115,6 +115,32 @@ def find_related():
             'success': True,
             'results': example_related
         })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/search_keywords', methods=['POST'])
+def search_keywords():
+    """
+    Busca papers por título o palabras clave utilizando solicitudes paralelas a Scholar y Crossref
+    """
+    data = request.get_json()
+    query = data.get('query', '')
+    max_results = data.get('max_results', 10)
+    
+    if not query:
+        return jsonify({'success': False, 'error': 'No se proporcionó una consulta de búsqueda'})
+    
+    try:
+        results, error = search_papers_by_keywords(query, max_results)
+        
+        if error or not results:
+            return jsonify({'success': False, 'error': error or 'No se encontraron papers que coincidan con la búsqueda'})
+        
+        return jsonify({
+            'success': True,
+            'results': results
+        })
+    
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 

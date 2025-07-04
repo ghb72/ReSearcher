@@ -1,0 +1,62 @@
+# -----------------
+# Python
+# -----------------
+
+# Byte-compiled / Cache
+# Ignora las carpetas de caché que Python crea automáticamente.
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.cpython-*
+
+# Entornos Virtuales
+# NUNCA subas tu entorno virtual. Es pesado y específico de tu sistema.
+# Los demás colaboradores deben crear el suyo a partir de `requirements.txt`.
+venv/
+.venv/
+env/
+.env/
+pip-cache/
+
+# Archivos de dependencias de Poetry
+poetry.lock
+.pdm.toml
+
+# Archivos de configuración de IDEs y editores
+# Estos son específicos de tu máquina y no deben compartirse.
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Archivos de testing
+# Ignora los caches y reportes de herramientas como pytest y coverage.
+.pytest_cache/
+.coverage
+htmlcov/
+nosetests.xml
+coverage.xml
+
+# Artefactos de empaquetado y distribución
+# Archivos generados al crear un paquete instalable.
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Archivos de sistema operativo
+# Basura generada por macOS y Windows.
+.DS_Store
+Thumbs.db
+
+# Logs y bases de datos locales
+# Los logs pueden contener información sensible y crecer mucho.
+*.log
+*.sqlite3
+
+# Secretos y credenciales
+# ¡MUY IMPORTANTE! Nunca subas archivos con contraseñas o claves de API.
+.env
+credentials.json
+secrets.yml

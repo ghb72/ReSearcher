@@ -1,6 +1,8 @@
 // Manejo del formulario de búsqueda de artículos
 const searchForm = document.getElementById('searchForm');
 const searchInput = document.getElementById('searchInput');
+const keywordsSearchForm = document.getElementById('keywordsSearchForm');
+const keywordsInput = document.getElementById('keywordsInput');
 const resultsDiv = document.getElementById('results');
 const pdfViewer = document.getElementById('pdfViewer');
 const pdfFrame = document.getElementById('pdfFrame');
@@ -62,6 +64,75 @@ searchForm.addEventListener('submit', async (e) => {
         mostrarFuentesArticulo(currentPaperInfo);
         
     } catch (error) {
+        resultsDiv.innerHTML = `
+            <div class='alert alert-danger'>
+                <h5><i class="fas fa-exclamation-triangle me-2"></i>Error de conexión</h5>
+                <p>${error.message}</p>
+                <p>Compruebe que el servidor backend está en funcionamiento.</p>
+            </div>`;
+    }
+});
+
+// Búsqueda de artículos por palabras clave
+keywordsSearchForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const query = keywordsInput.value.trim();
+    if (!query) return;
+    
+    // Mostrar mensaje de búsqueda inicial
+    resultsDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>Buscando artículos que coincidan con las palabras clave...</div>';
+    closePDF(); // Cierra cualquier visor abierto antes de nueva búsqueda
+    relatedArticles.style.display = 'none';
+    
+    // Limpiar cualquier timeout previo
+    if (searchTimeout) {
+        clearTimeout(searchTimeout);
+        searchTimeout = null;
+    }
+    
+    // Simular actualizaciones de estado para mejorar la experiencia de usuario
+    searchTimeout = setTimeout(() => {
+        resultsDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>Consultando múltiples fuentes académicas en paralelo...</div>';
+    }, 1500);
+    
+    try {
+        // Realizar la búsqueda por palabras clave
+        const response = await fetch(`${API_BASE_URL}/api/search_keywords`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                query: query,
+                max_results: 15
+            })
+        });
+        
+        // Limpiar timeout
+        if (searchTimeout) {
+            clearTimeout(searchTimeout);
+            searchTimeout = null;
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+            resultsDiv.innerHTML = `
+                <div class='alert alert-danger'>
+                    <h5><i class="fas fa-exclamation-triangle me-2"></i>Error</h5>
+                    <p>${data.error || 'No se encontraron artículos que coincidan con la búsqueda'}</p>
+                </div>`;
+            return;
+        }
+        
+        // Mostrar los resultados de la búsqueda
+        mostrarResultadosBusquedaPorPalabras(data.results);
+        
+    } catch (error) {
+        // Limpiar timeout
+        if (searchTimeout) {
+            clearTimeout(searchTimeout);
+            searchTimeout = null;
+        }
+        
         resultsDiv.innerHTML = `
             <div class='alert alert-danger'>
                 <h5><i class="fas fa-exclamation-triangle me-2"></i>Error de conexión</h5>
@@ -545,4 +616,88 @@ function mostrarArticulosRelacionados(results) {
 window.buscarPorDOI = function(doi) {
     searchInput.value = `https://doi.org/${doi}`;
     searchForm.dispatchEvent(new Event('submit'));
+}
+
+// Mostrar resultados de búsqueda por palabras clave
+function mostrarResultadosBusquedaPorPalabras(results) {
+    if (!results || !results.length) {
+        resultsDiv.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-circle me-2"></i>No se encontraron artículos que coincidan con la búsqueda.</div>';
+        return;
+    }
+    
+    // Crear el encabezado de resultados
+    let resultsHTML = `
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-search me-2"></i>Resultados de la Búsqueda (${results.length})</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+    `;
+    
+    // Crear los elementos de resultados
+    results.forEach((paper, index) => {
+        const title = paper.title || 'Sin título';
+        
+        // Manejar autores
+        let authors = 'Autores desconocidos';
+        if (paper.authors) {
+            if (Array.isArray(paper.authors)) {
+                authors = paper.authors.join(', ');
+            } else if (typeof paper.authors === 'string') {
+                authors = paper.authors;
+            }
+        }
+        
+        // Extraer información adicional
+        const year = paper.year || '';
+        const journal = paper.jurnal || '';
+        const abstract = paper.abstract || 'No hay resumen disponible';
+        const doi = paper.doi || '';
+        const source = paper.source || '';
+        const sourceIcon = source === "Crossref" ? "fas fa-book" : "fas fa-graduation-cap";
+        const cites = paper.cites_num ? `<span class="badge bg-secondary">${paper.cites_num} citas</span>` : '';
+        
+        resultsHTML += `
+            <div class="list-group-item list-group-item-action">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-1">${title}</h5>
+                    <span class="badge bg-info text-dark"><i class="${sourceIcon} me-1"></i> ${source}</span>
+                </div>
+                <p class="mb-1 text-muted">${authors}</p>
+                <div class="d-flex mb-2 flex-wrap">
+                    ${journal ? `<span class="badge bg-secondary me-2">${journal}</span>` : ''}
+                    ${year ? `<span class="badge bg-info text-dark me-2">${year}</span>` : ''}
+                    ${cites}
+                </div>
+                <div class="mb-2 small">
+                    ${abstract.length > 300 ? abstract.substring(0, 300) + '...' : abstract}
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        ${doi ? `<small class="text-muted">DOI: ${doi}</small>` : ''}
+                    </div>
+                    <div>
+                        ${doi ? `<button class="btn btn-sm btn-primary me-2" onclick="buscarPorDOI('${doi}')">
+                            <i class="fas fa-info-circle me-1"></i>Ver detalles
+                        </button>` : ''}
+                        ${paper.url ? `<a href="${paper.url}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-external-link-alt me-1"></i>Ver fuente
+                        </a>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    resultsHTML += `
+                </div>
+            </div>
+        </div>
+    `;
+    
+    resultsDiv.innerHTML = resultsHTML;
+    
+    // Hacer scroll hacia los resultados
+    resultsDiv.scrollIntoView({ behavior: 'smooth' });
 }
