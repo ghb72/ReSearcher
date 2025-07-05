@@ -103,7 +103,13 @@ class ScholarExtractor:
                         paper_info['journal'] = journal_parts[1].strip()
             
             # Abstract / Resumen
-            abstract_tag = result.select_one('.gsh_csp')
+            abstract_tag = result.select_one('.gs_fma_abs')
+            if not abstract_tag:
+                # Intentar buscar en el primer párrafo del contenido
+                abstract_tag = result.select_one('.gs_fma_snp')
+            elif not abstract_tag:
+                # Si no hay abstract, intentar buscar en el primer párrafo del contenido
+                abstract_tag = result.select_one('.gsh_csp')
             if abstract_tag:
                 abstract_text = abstract_tag.get_text(strip=True)
                 # Eliminar indicadores de elipsis y limpiar

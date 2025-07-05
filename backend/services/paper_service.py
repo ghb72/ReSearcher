@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 import tempfile
 import shutil
 import requests
+import cloudscraper
 from .Crossref import getPapersInfoFromDOIs
 import time
 import random
@@ -11,6 +12,7 @@ from .Scholar import ScholarPapersInfo
 from .ScholarExtractor import ScholarExtractor
 import concurrent.futures
 import threading
+from bs4 import BeautifulSoup
 
 def extract_doi_from_url(url):
     """Extrae el DOI de una URL o devuelve el DOI directo si se proporcionó uno"""
@@ -139,16 +141,17 @@ def get_paper_info(query):
     except Exception as e:
         return None, f"Error al procesar la solicitud: {str(e)}"
 
-def download_from_scihub(doi, output_path):
+def download_from_scihub(doi, output_path=None, get_link_only=False):
     """
-    Intenta descargar un artículo desde Sci-Hub
+    Intenta encontrar un enlace de descarga desde Sci-Hub y opcionalmente descarga el archivo
     
     Args:
         doi: DOI del artículo
-        output_path: Ruta donde guardar el PDF
+        output_path: Ruta donde guardar el PDF (None si solo se quiere el enlace)
+        get_link_only: Si es True, solo devuelve el enlace sin descargar
     
     Returns:
-        bool: True si se descargó correctamente, False en caso contrario
+        str o bool: URL de descarga si get_link_only=True, sino True/False según éxito de descarga
     """
     # Lista de espejos de Sci-Hub a probar
     mirrors = [
@@ -159,11 +162,14 @@ def download_from_scihub(doi, output_path):
         "https://sci-hub.cat",
         "https://sci-hub.wf",
         "https://sci-hub.ren",
-        "https://sci-hub.mksa.top"
+        "https://sci-hub.mksa.top",
+        "https://sci-hub.mk"
     ]
     
     # Aleatorizar el orden de los espejos para distribuir la carga
     random.shuffle(mirrors)
+
+    scrapper = cloudscraper.create_scraper()  # Usar cloudscraper para manejar captchas y bloqueos
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -176,146 +182,105 @@ def download_from_scihub(doi, output_path):
         'Cache-Control': 'max-age=0',
     }
     
-    print(f"Searching paper 1 of 1 with DOI {doi}")
+    print(f"Searching paper with DOI {doi}")
     print("Searching for a sci-hub mirror")
     
     for mirror in mirrors:
         try:
             print(f"Trying with {mirror}...")
             url = f"{mirror}/{doi}"
-            response = requests.get(url, headers=headers, timeout=10)
+            response = scrapper.get(url, timeout=10)
+            response.raise_for_status()  # Lanza un error si la respuesta no es 200
+            # response = requests.get(url, headers=headers, timeout=10)
             
             if response.status_code == 200:
-                # Buscar diferentes patrones de iframe o enlaces de descarga en la respuesta HTML
-                patterns = [
-                    r'<iframe[^>]*src="([^"]+)"[^>]*id="pdf"',  # Patrón estándar de iframe
-                    r'<iframe[^>]*src="([^"]+\.pdf)"',  # Cualquier iframe con PDF
-                    r'<a[^>]*href="([^"]+\.pdf)"[^>]*>',  # Enlaces directos a PDF
-                    r'location.href\s*=\s*[\'"]([^\'"]+\.pdf)[\'"]',  # Redirecciones JavaScript
-                ]
-                
-                pdf_link = None
-                for pattern in patterns:
-                    match = re.search(pattern, response.text)
-                    if match:
-                        pdf_link = match.group(1)
-                        break
-                
-                if pdf_link:
-                    # Normalizar la URL del PDF
-                    if pdf_link.startswith('//'):
-                        pdf_link = 'https:' + pdf_link
-                    elif not pdf_link.startswith('http'):
-                        # URL relativa
-                        if pdf_link.startswith('/'):
-                            pdf_link = f"{mirror}{pdf_link}"
-                        else:
-                            pdf_link = f"{mirror}/{pdf_link}"
-                    
-                    print(f"Using Sci-Hub mirror {mirror}")
-                    print(f"Found PDF link: {pdf_link}")
-                    
-                    # Agregar un retraso para evitar detección
-                    time.sleep(random.uniform(1, 3))
-                    
-                    # Descargar el PDF
-                    pdf_response = requests.get(pdf_link, headers=headers, timeout=30, stream=True)
-                    
-                    # Verificar que la respuesta es un PDF o al menos contenido binario
-                    content_type = pdf_response.headers.get('Content-Type', '')
-                    if pdf_response.status_code == 200 and (
-                        content_type.startswith('application/pdf') or 
-                        content_type.startswith('application/octet-stream') or
-                        content_type.startswith('binary/octet-stream')
-                    ):
-                        with open(output_path, 'wb') as f:
-                            for chunk in pdf_response.iter_content(chunk_size=8192):
-                                f.write(chunk)
+                # Buscar el enlace de descarga en la página
+                soup = BeautifulSoup(response.text, 'html.parser')
+                print('Souped', url)
+                pdf_element = soup.find(id='pdf')
+                if pdf_element and 'src' in pdf_element.attrs:
+                    download_link = str(pdf_element['src'])
+                    if download_link.startswith('//'):
+                        download_link = 'https:' + download_link
+                    elif not download_link.startswith('http'):
+                        base_url = '/'.join(mirror.split('/')[:3])  # Obtener el esquema y dominio
+                        download_link = base_url + download_link.lstrip('/')
+                    if not download_link.startswith('http'):
+                        download_link = mirror + download_link
                         
-                        # Verificar que el archivo es un PDF válido
-                        if os.path.getsize(output_path) > 1000:  # Mínimo 1KB para ser un PDF válido
-                            with open(output_path, 'rb') as f:
-                                header = f.read(8)
-                                if b'%PDF' in header:  # Comprobar firma de archivo PDF
-                                    print(f"Download 1 of 1 -> {os.path.basename(output_path)}")
-                                    return True
-                                else:
-                                    print("Archivo descargado no es un PDF válido")
-                        else:
-                            print("Archivo PDF descargado es demasiado pequeño")
+                    if get_link_only:
+                        return download_link
+                        
+                    # Si se requiere descarga, intentar descargar
+                    if output_path:
+                        pdf_response = scrapper.get(download_link, headers={'Referer': url}, timeout=60)
+                        pdf_response.raise_for_status()
+                        if pdf_response.status_code == 200:
+                            with open(output_path, 'wb') as f:
+                                f.write(pdf_response.content)
+                            return True
+        except cloudscraper.exceptions.CloudflareException as e:
+            print(f"Cloudflare challenge encountered: {e}")
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error de red o de HTTP con el espejo {mirror}: {str(e)}")
+
         except Exception as e:
-            print(f"Error with {mirror}: {str(e)}")
+            print(f"Error with mirror {mirror}: {str(e)}")
         
-        # Agregar un retraso entre intentos para evitar detección
         time.sleep(random.uniform(2, 5))
     
-    # Intentar con Annas-Archive como último recurso
+    # Si no se encontró en Sci-Hub, intentar con otras fuentes
     try:
-        print("Using Sci-DB mirror https://annas-archive.se/scidb/")
-        url = f"https://annas-archive.se/scidb/{doi}"
+        print("Using Annas-Archive...")
+        url = f"https://annas-archive.org/scidb/{doi}"
         response = requests.get(url, headers=headers, timeout=15)
         
         if response.status_code == 200:
-            # Buscar enlace de descarga
-            download_patterns = [
-                r'href="(/scidb/[^"]+)".*?Download',
-                r'href="(/dl/[^"]+)".*?Download',
-                r'href="(/md5/[^"]+)".*?Download',
-            ]
-            
-            for pattern in download_patterns:
-                download_link_match = re.search(pattern, response.text)
-                if download_link_match:
-                    download_link = "https://annas-archive.se" + download_link_match.group(1)
-                    print(f"Found download link: {download_link}")
+            # Extraer enlace de descarga
+            soup = BeautifulSoup(response.text, 'html.parser')
+            download_link = soup.find('a', class_='download-link')
+            if download_link and 'href' in download_link.attrs:
+                link_url = str(download_link['href'])
+                if get_link_only:
+                    return link_url
                     
-                    # Agregar un retraso para evitar detección
-                    time.sleep(random.uniform(1, 3))
-                    
-                    pdf_response = requests.get(download_link, headers=headers, timeout=30, stream=True)
-                    
+                if output_path:
+                    pdf_response = requests.get(link_url, headers=headers, timeout=30)
                     if pdf_response.status_code == 200:
                         with open(output_path, 'wb') as f:
-                            for chunk in pdf_response.iter_content(chunk_size=8192):
-                                f.write(chunk)
+                            f.write(pdf_response.content)
+                        return True
                         
-                        # Verificar que el archivo es un PDF válido
-                        if os.path.getsize(output_path) > 1000:
-                            with open(output_path, 'rb') as f:
-                                header = f.read(8)
-                                if b'%PDF' in header:
-                                    print(f"Download 1 of 1 -> {os.path.basename(output_path)}")
-                                    return True
-                    break
     except Exception as e:
         print(f"Error with Annas-Archive: {str(e)}")
     
-    # Si todos los intentos fallan, intentar con API libre de Unpaywall
-    try:
-        print("Trying with Unpaywall API...")
-        unpaywall_url = f"https://api.unpaywall.org/v2/{doi}?email=app@example.org"
-        response = requests.get(unpaywall_url, headers=headers, timeout=15)
+    return None if get_link_only else False
+
+def download_paper_from_link(download_link, output_path):
+    """
+    Descarga un paper desde un enlace previamente obtenido
+    
+    Args:
+        download_link: URL de descarga del PDF
+        output_path: Ruta donde guardar el archivo
         
+    Returns:
+        bool: True si se descargó correctamente, False en caso contrario
+    """
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    try:
+        response = requests.get(download_link, headers=headers, timeout=30)
         if response.status_code == 200:
-            data = response.json()
-            if data.get('is_oa') and data.get('best_oa_location') and data['best_oa_location'].get('url_for_pdf'):
-                pdf_url = data['best_oa_location']['url_for_pdf']
-                print(f"Found PDF at Unpaywall: {pdf_url}")
-                
-                pdf_response = requests.get(pdf_url, headers=headers, timeout=30, stream=True)
-                if pdf_response.status_code == 200:
-                    with open(output_path, 'wb') as f:
-                        for chunk in pdf_response.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                    
-                    if os.path.getsize(output_path) > 1000:
-                        with open(output_path, 'rb') as f:
-                            header = f.read(8)
-                            if b'%PDF' in header:
-                                print(f"Download 1 of 1 -> {os.path.basename(output_path)}")
-                                return True
+            with open(output_path, 'wb') as f:
+                f.write(response.content)
+            return True
     except Exception as e:
-        print(f"Error with Unpaywall: {str(e)}")
+        print(f"Error downloading paper: {str(e)}")
+        return False
     
     return False
 
@@ -587,4 +552,4 @@ def search_papers_by_keywords(query, max_results=10):
     # Limitar el número de resultados
     final_results = sorted_results[:max_results]
     
-    return final_results, None 
+    return final_results, None

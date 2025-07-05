@@ -1,9 +1,10 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, copy_current_request_context
 from flask_cors import CORS
 import os
 import time
 from pathlib import Path
 import sys
+from threading import Thread
 
 # Añadir la carpeta 'backend' al sys.path para permitir importaciones relativas
 backend_dir = os.path.abspath(os.path.dirname(__file__))
@@ -21,7 +22,7 @@ Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
 @app.route('/api/info', methods=['POST'])
 def get_info():
     """
-    Obtiene información de un artículo basado en su DOI o URL sin descargarlo
+    Obtiene información de un artículo y busca un enlace de descarga de forma asíncrona
     """
     data = request.get_json()
     query = data.get('query', '')
@@ -34,32 +35,60 @@ def get_info():
         
         if error or not paper_info:
             return jsonify({'success': False, 'error': error or 'No se pudo obtener información del artículo'})
+
+        # Crear una tarea en segundo plano para buscar el enlace de descarga
+        @copy_current_request_context
+        def find_download_link():
+            try:
+                from services.paper_service import download_from_scihub
+                doi = paper_info['sources'][0]['doi'] if paper_info['sources'] else None
+                
+                if doi:
+                    # Buscar enlace de descarga sin descargar el archivo
+                    download_link = download_from_scihub(doi, None, get_link_only=True)
+                    if download_link:
+                        paper_info['download_link'] = download_link
+                        # Aquí podrías emitir un evento WebSocket o usar Server-Sent Events
+                        # para notificar al frontend que el enlace está disponible
+            except Exception as e:
+                print(f"Error finding download link: {str(e)}")
+
+        # Iniciar la búsqueda del enlace en segundo plano
+        thread = Thread(target=find_download_link)
+        thread.daemon = True
+        thread.start()
         
         return jsonify({'success': True, 'info': paper_info})
     
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/api/search', methods=['POST'])
-def search():
+@app.route('/api/download', methods=['POST'])
+def download_paper():
     """
-    Busca y descarga un artículo basado en su DOI o URL
+    Descarga un artículo usando la información y enlace obtenidos previamente
     """
     data = request.get_json()
-    query = data.get('query', '')
+    doi = data.get('doi')
+    download_link = data.get('download_link')
     
-    if not query:
-        return jsonify({'success': False, 'error': 'No se proporcionó una consulta'})
+    if not doi or not download_link:
+        return jsonify({'success': False, 'error': 'Se requiere DOI y enlace de descarga'})
     
     try:
-        result, error = search_and_download_paper(query, DOWNLOAD_DIR)
+        # Preparar nombre de archivo
+        pdf_filename = f"{doi.replace('/', '_')}.pdf"
+        pdf_path = os.path.join(DOWNLOAD_DIR, pdf_filename)
         
-        if error or not result:
-            return jsonify({'success': False, 'error': error or 'No se pudo descargar el artículo'})
+        from services.paper_service import download_paper_from_link
+        success = download_paper_from_link(download_link, pdf_path)
+        
+        if not success:
+            return jsonify({'success': False, 'error': 'No se pudo descargar el artículo'})
         
         return jsonify({
-            'success': True, 
-            'results': [result]  # Mantenemos compatibilidad con el formato anterior
+            'success': True,
+            'pdf_url': f"/pdf/{pdf_filename}"
         })
     
     except Exception as e:
@@ -145,4 +174,4 @@ def search_keywords():
         return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000) 
+    app.run(debug=True, port=5000)
